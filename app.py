@@ -31,9 +31,6 @@ FUENTE = (
 
 becas = cargar_becas()
 lista_anos = anos(becas)
-
-# Opciones del selector: "Todos los años" + cada año como string.
-# El valor reactivo también es string, y se convierte a int o None cuando hace falta.
 opciones_ano = ["Todos los años"] + [str(a) for a in lista_anos]
 ano = solara.reactive("Todos los años")
 clave = solara.reactive("")
@@ -49,30 +46,137 @@ def _ano_a_int(valor):
         return None
 
 
+def _barras_html(df_distrib, color="#1976D2", resaltar=None, top=15):
+    """Construye HTML con barras horizontales. No usa matplotlib.
+
+    df_distrib: DataFrame con columnas [categoria, becarios].
+    resaltar: valor o lista de valores a mostrar en naranja.
+    top: máximo número de barras a mostrar.
+    """
+    d = df_distrib.copy()
+    # Quitar 'Sin información' del gráfico (queda en la tabla).
+    d = d[d.iloc[:, 0] != "Sin información"]
+    if len(d) == 0:
+        return "<p style='color:#888;font-size:13px'>Sin datos para mostrar.</p>"
+    d = d.sort_values("becarios", ascending=False).head(top)
+    max_val = int(d["becarios"].max())
+    resaltar_set = set([resaltar] if isinstance(resaltar, str) else (resaltar or []))
+
+    filas = []
+    for _, row in d.iterrows():
+        cat = str(row.iloc[0])
+        val = int(row["becarios"])
+        pct = val / max_val * 100 if max_val else 0
+        color_barra = "#F57C00" if cat in resaltar_set else color
+        filas.append(
+            f"<div style='display:flex;align-items:center;margin-bottom:6px;font-family:sans-serif'>"
+            f"<div style='width:150px;text-align:right;padding-right:10px;font-size:13px;"
+            f"color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>{cat}</div>"
+            f"<div style='flex:1;background:#f0f0f0;height:22px;border-radius:3px'>"
+            f"<div style='width:{pct:.1f}%;height:100%;background:{color_barra};border-radius:3px'></div>"
+            f"</div>"
+            f"<div style='width:70px;padding-left:8px;font-size:13px;font-weight:bold;"
+            f"color:#444'>{val:,}</div>"
+            f"</div>"
+        )
+    return "".join(filas)
+
+
 @solara.component
 def Page():
     solara.Title(NOMBRE)
+    ano_int = _ano_a_int(ano.value)
+    total = total_becarios(becas, ano_int)
+
+    # --- Encabezado ---
     solara.Markdown(f"# {NOMBRE}\n\n{NECESIDAD}")
 
-    # Selector de año: opciones como strings, sin parámetro 'labels'.
+    # --- Selector de año ---
     solara.Select(label="Año de selección", value=ano, values=opciones_ano)
 
-    ano_int = _ano_a_int(ano.value)
-    solara.Markdown(f"**Total de becarios:** {total_becarios(becas, ano_int):,}")
+    # --- KPIs (tarjetas) ---
+    df_gen = becarios_por_genero(becas, ano_int)
+    fem = df_gen.loc[df_gen["genero"] == "Femenino", "becarios"].sum()
+    pct_fem = int(round(fem / total * 100)) if total else 0
 
-    solara.Markdown("## Distribución por estrato socioeconómico")
-    solara.DataFrame(becarios_por_estrato(becas, ano_int))
+    df_est = becarios_por_estrato(becas, ano_int)
+    baja = df_est.loc[df_est["estrato_socioeconomico"].isin(["1", "2"]), "becarios"].sum()
+    pct_baja = int(round(baja / total * 100)) if total else 0
 
-    solara.Markdown("## Distribución por género")
-    solara.DataFrame(becarios_por_genero(becas, ano_int))
+    df_pais = becarios_por_pais(becas, ano_int)
+    df_pais_sin = df_pais[df_pais["pais_de_destino"] != "Sin información"]
+    top_pais = df_pais_sin.iloc[0]["pais_de_destino"] if len(df_pais_sin) else "—"
+    pct_top = int(round(df_pais_sin.iloc[0]["becarios"] / total * 100)) if len(df_pais_sin) and total else 0
 
+    with solara.Row():
+        with solara.Card(title="Becarios", style="min-width: 160px"):
+            solara.Markdown(f"### {total:,}")
+        with solara.Card(title="% Femenino", style="min-width: 160px"):
+            solara.Markdown(f"### {pct_fem}%")
+        with solara.Card(title="% Estratos 1–2 (bajos)", style="min-width: 160px"):
+            solara.Markdown(f"### {pct_baja}%")
+        with solara.Card(title="País top", style="min-width: 160px"):
+            solara.Markdown(f"### {top_pais}")
+            solara.Markdown(f"{pct_top}% de las becas")
+
+    solara.Markdown("---")
+
+    # --- Distribución por estrato ---
+    solara.Markdown(
+        "## Distribución por estrato socioeconómico\n\n"
+        "Los estratos 1 y 2 (los más bajos) están resaltados en naranja "
+        "para visualizar la brecha de aprovechamiento."
+    )
+    with solara.Row():
+        with solara.Column(style="flex: 2"):
+            solara.HTML(tag="div", unsafe_innerHTML=_barras_html(
+                becarios_por_estrato(becas, ano_int),
+                color="#1976D2", resaltar=["1", "2"],
+            ))
+        with solara.Column(style="flex: 1"):
+            solara.DataFrame(becarios_por_estrato(becas, ano_int))
+
+    # --- Distribución por género ---
+    solara.Markdown(
+        "## Distribución por género\n\n"
+        "El género femenino está resaltado para evidenciar la brecha de género."
+    )
+    with solara.Row():
+        with solara.Column(style="flex: 2"):
+            solara.HTML(tag="div", unsafe_innerHTML=_barras_html(
+                becarios_por_genero(becas, ano_int),
+                color="#7B1FA2", resaltar="Femenino",
+            ))
+        with solara.Column(style="flex: 1"):
+            solara.DataFrame(becarios_por_genero(becas, ano_int))
+
+    # --- Distribución por nivel académico ---
     solara.Markdown("## Distribución por nivel académico")
-    solara.DataFrame(becarios_por_nivel(becas, ano_int))
+    with solara.Row():
+        with solara.Column(style="flex: 2"):
+            solara.HTML(tag="div", unsafe_innerHTML=_barras_html(
+                becarios_por_nivel(becas, ano_int),
+                color="#388E3C",
+            ))
+        with solara.Column(style="flex: 1"):
+            solara.DataFrame(becarios_por_nivel(becas, ano_int))
 
-    solara.Markdown("## Distribución por país de destino")
-    solara.DataFrame(becarios_por_pais(becas, ano_int))
+    # --- Distribución por país ---
+    solara.Markdown(
+        "## Distribución por país de destino\n\n"
+        "Se muestran los 15 países con más becarios."
+    )
+    with solara.Row():
+        with solara.Column(style="flex: 2"):
+            solara.HTML(tag="div", unsafe_innerHTML=_barras_html(
+                becarios_por_pais(becas, ano_int),
+                color="#E64A19",
+            ))
+        with solara.Column(style="flex: 1"):
+            solara.DataFrame(becarios_por_pais(becas, ano_int))
 
-    # Vista privada: solo aparece si la clave coincide con la del servidor.
+    # --- Vista privada ---
+    solara.Markdown("---")
     solara.InputText("Clave de administración", value=clave, password=True)
     if CLAVE_ADMIN and clave.value == CLAVE_ADMIN:
         solara.Markdown("## Vista privada — tabla completa")
