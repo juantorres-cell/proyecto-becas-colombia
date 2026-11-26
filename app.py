@@ -89,22 +89,63 @@ def _barras_html(df_distrib, color="#1976D2", resaltar=None, top=15):
     return "".join(filas)
 
 
+ESTILOS = """
+body, .v-application { background: #F4F6FA !important; }
+.encabezado { background: #1565C0; color: #fff;
+  padding: 28px 32px; border-radius: 0; font-family: sans-serif; }
+.encabezado h1 { margin: 0 0 8px 0; font-size: 30px; }
+.encabezado p { margin: 0; font-size: 16px; line-height: 1.5; opacity: .95; }
+.kpis { display: flex; flex-wrap: wrap; gap: 14px; font-family: sans-serif; }
+.kpi { flex: 1 1 190px; background: #fff; border-radius: 0; padding: 16px 18px;
+  border-left: 6px solid var(--c); border-radius: 0; }
+.kpi .t { font-size: 13px; color: #666; text-transform: uppercase; letter-spacing: .4px; }
+.kpi .v { font-size: 34px; font-weight: 700; color: #222; margin: 4px 0 2px 0; }
+.kpi .d { font-size: 13px; color: #888; }
+.nota { background: #FFF8E1; border-left: 5px solid #F9A825; color: #5D4037;
+  padding: 10px 14px; border-radius: 0; font-family: sans-serif; font-size: 14px; }
+.pie { color: #666; font-size: 13px; }
+"""
+
+
+def _kpi(titulo, valor, detalle="", color="#1976D2"):
+    """Tarjeta de indicador en HTML."""
+    return (
+        f"<div class='kpi' style='--c:{color}'>"
+        f"<div class='t'>{titulo}</div><div class='v'>{valor}</div>"
+        f"<div class='d'>{detalle}</div></div>"
+    )
+
+
+def _seccion(titulo, descripcion, html_barras, df_tabla):
+    """Sección con título, descripción, barras y tabla dentro de una tarjeta."""
+    with solara.Card(title=titulo, subtitle=descripcion, margin=0, style="margin-top: 18px"):
+        with solara.Row(style="flex-wrap: wrap; gap: 16px"):
+            with solara.Column(style="flex: 2 1 380px; min-width: 300px"):
+                solara.HTML(tag="div", unsafe_innerHTML=html_barras)
+            with solara.Column(style="flex: 1 1 260px; min-width: 240px"):
+                solara.DataFrame(df_tabla)
+
+
 @solara.component
 def Page():
     solara.Title(NOMBRE)
+    solara.Style(ESTILOS)
     ano_int = _ano_a_int(ano.value)
     becas = filtrar_por_nivel(becas_todas, nivel.value)
     total = total_becarios(becas, ano_int)
 
     # --- Encabezado ---
-    solara.Markdown(f"# {NOMBRE}\n\n{NECESIDAD}")
+    solara.HTML(tag="div", unsafe_innerHTML=(
+        f"<div class='encabezado'><h1>{NOMBRE}</h1><p>{NECESIDAD}</p></div>"
+    ))
 
-    # --- Selector de año ---
-    with solara.Row():
-        solara.Select(label="Año de selección", value=ano, values=opciones_ano)
-        solara.Select(label="Nivel académico", value=nivel, values=opciones_nivel)
+    # --- Filtros ---
+    with solara.Card(margin=0, style="margin-top: 18px"):
+        with solara.Row(style="flex-wrap: wrap; gap: 16px"):
+            solara.Select(label="Año de selección", value=ano, values=opciones_ano)
+            solara.Select(label="Nivel académico", value=nivel, values=opciones_nivel)
 
-    # --- KPIs (tarjetas) ---
+    # --- Indicadores ---
     df_gen = becarios_por_genero(becas, ano_int)
     fem = df_gen.loc[df_gen["genero"] == "Femenino", "becarios"].sum()
     pct_fem = int(round(fem / total * 100)) if total else 0
@@ -118,72 +159,50 @@ def Page():
     top_pais = df_pais_sin.iloc[0]["pais_de_destino"] if len(df_pais_sin) else "—"
     pct_top = int(round(df_pais_sin.iloc[0]["becarios"] / total * 100)) if len(df_pais_sin) and total else 0
 
-    with solara.Row():
-        with solara.Card(title="Becarios", style="min-width: 160px"):
-            solara.Markdown(f"### {total:,}")
-        with solara.Card(title="% Femenino", style="min-width: 160px"):
-            solara.Markdown(f"### {pct_fem}%")
-        with solara.Card(title="% Estratos 1–2 (bajos)", style="min-width: 160px"):
-            solara.Markdown(f"### {pct_baja}%")
-        with solara.Card(title="País top", style="min-width: 160px"):
-            solara.Markdown(f"### {top_pais}")
-            solara.Markdown(f"{pct_top}% de las becas")
+    solara.HTML(tag="div", style="margin-top: 18px", unsafe_innerHTML=(
+        "<div class='kpis'>"
+        + _kpi("Becarios", f"{total:,}", "cada fila cuenta como un becario", "#1976D2")
+        + _kpi("Femenino", f"{pct_fem}%", "del total del filtro", "#7B1FA2")
+        + _kpi("Estratos 1–2", f"{pct_baja}%", "estratos más bajos", "#F57C00")
+        + _kpi("País top", top_pais, f"{pct_top}% de las becas", "#388E3C")
+        + "</div>"
+    ))
 
-    solara.Markdown("---")
-
-    # --- Distribución por estrato ---
-    solara.Markdown(
-        "## Distribución por estrato socioeconómico\n\n"
-        "Los estratos 1 y 2 (los más bajos) están resaltados en naranja "
-        "para visualizar la brecha de aprovechamiento."
+    # --- Secciones ---
+    _seccion(
+        "Distribución por estrato socioeconómico",
+        "Los estratos 1 y 2 (los más bajos) están resaltados en naranja para ver la brecha.",
+        _barras_html(becarios_por_estrato(becas, ano_int), color="#1976D2", resaltar=["1", "2"]),
+        becarios_por_estrato(becas, ano_int),
     )
-    with solara.Row():
-        with solara.Column(style="flex: 2"):
-            solara.HTML(tag="div", unsafe_innerHTML=_barras_html(
-                becarios_por_estrato(becas, ano_int),
-                color="#1976D2", resaltar=["1", "2"],
-            ))
-        with solara.Column(style="flex: 1"):
-            solara.DataFrame(becarios_por_estrato(becas, ano_int))
-
-    # --- Distribución por género ---
-    solara.Markdown(
-        "## Distribución por género\n\n"
-        "El género femenino está resaltado para evidenciar la brecha de género."
+    _seccion(
+        "Distribución por género",
+        "El género femenino está resaltado para ver la brecha de género.",
+        _barras_html(becarios_por_genero(becas, ano_int), color="#7B1FA2", resaltar="Femenino"),
+        becarios_por_genero(becas, ano_int),
     )
-    with solara.Row():
-        with solara.Column(style="flex: 2"):
-            solara.HTML(tag="div", unsafe_innerHTML=_barras_html(
-                becarios_por_genero(becas, ano_int),
-                color="#7B1FA2", resaltar="Femenino",
-            ))
-        with solara.Column(style="flex: 1"):
-            solara.DataFrame(becarios_por_genero(becas, ano_int))
-
-    # --- Distribución por nivel académico ---
-    solara.Markdown("## Distribución por nivel académico")
-    with solara.Row():
-        with solara.Column(style="flex: 2"):
-            solara.HTML(tag="div", unsafe_innerHTML=_barras_html(
-                becarios_por_nivel(becas, ano_int),
-                color="#388E3C",
-            ))
-        with solara.Column(style="flex: 1"):
-            solara.DataFrame(becarios_por_nivel(becas, ano_int))
-
-    # --- Distribución por país ---
-    solara.Markdown(
-        "## Distribución por país de destino\n\n"
-        "Se muestran los 15 países con más becarios."
+    _seccion(
+        "Distribución por nivel académico",
+        "Cuántos becarios hay en cada tipo de programa.",
+        _barras_html(becarios_por_nivel(becas, ano_int), color="#388E3C"),
+        becarios_por_nivel(becas, ano_int),
     )
-    with solara.Row():
-        with solara.Column(style="flex: 2"):
-            solara.HTML(tag="div", unsafe_innerHTML=_barras_html(
-                becarios_por_pais(becas, ano_int),
-                color="#E64A19",
-            ))
-        with solara.Column(style="flex: 1"):
-            solara.DataFrame(becarios_por_pais(becas, ano_int))
+    _seccion(
+        "Distribución por país de destino",
+        "Se muestran los 15 países con más becarios.",
+        _barras_html(becarios_por_pais(becas, ano_int), color="#E64A19"),
+        becarios_por_pais(becas, ano_int),
+    )
+
+    # Nota sobre filas con Colombia como destino (así viene en la fuente).
+    base = becas if ano_int is None else becas[becas["ano_seleccion"] == ano_int]
+    n_col = int((base["pais_de_destino"] == "Colombia").sum())
+    if n_col:
+        solara.HTML(tag="div", style="margin-top: 14px", unsafe_innerHTML=(
+            f"<div class='nota'><b>Nota:</b> {n_col:,} registros de este filtro tienen "
+            "<b>Colombia</b> como país de destino. Así vienen en la fuente de ICETEX, "
+            "que no explica el motivo; se mantienen y no se eliminan.</div>"
+        ))
 
     # --- Vista privada ---
     solara.Markdown("---")
@@ -193,4 +212,4 @@ def Page():
         d = becas if ano_int is None else becas[becas["ano_seleccion"] == ano_int]
         solara.DataFrame(d)
 
-    solara.Markdown(FUENTE)
+    solara.Markdown(FUENTE, style="margin-top: 8px")
