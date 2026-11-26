@@ -21,7 +21,7 @@ CLAVE_ADMIN = os.environ.get("CLAVE_ADMIN", "")  # secreto: nunca escriba su val
 
 # Lo que la app le dice a quien la abre.
 NECESIDAD = (
-    "Para estudiantes, universidades y quienes diseñan políticas de becas:"
+    "Para estudiantes, universidades y quienes diseñan políticas de becas: "
     "De las becas en el exterior que ICETEX otorga a colombianos, "
     "¿qué estratos, niveles académicos y países concentran el aprovechamiento, "
     "y qué grupos quedan por fuera?"
