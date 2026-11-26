@@ -1,4 +1,7 @@
 """Pruebas de las reglas en logica.py."""
+import csv
+from collections import Counter
+
 from logica import (
     anos,
     becarios_por_estrato,
@@ -9,6 +12,8 @@ from logica import (
     niveles_academicos,
     paises_destino,
     total_becarios,
+    DATOS,
+    filtrar_por_nivel,
 )
 
 
@@ -57,19 +62,6 @@ def test_pais_japon_unificado():
     assert "Japon" not in paises, "Japón debe estar unificado con tilde"
 
 
-def test_no_duplicados():
-    df = cargar_becas()
-    n_dup = int(df.duplicated().sum())
-    assert n_dup == 0, f"Quedan {n_dup} filas duplicadas tras la limpieza"
-
-
-def test_total_becarios_menor_que_crudo():
-    """El CSV crudo tiene 8.725 filas; tras limpiar y desduplicar deben ser ~2.595."""
-    df = cargar_becas()
-    assert len(df) < 8725, f"Esperaba menos de 8725 filas tras limpieza, hay {len(df)}"
-    assert 2000 < len(df) < 4000, f"Esperaba entre 2000 y 4000 becarios únicos, hay {len(df)}"
-
-
 def test_becarios_por_estrato_suman_total():
     df = cargar_becas()
     por_estrato = becarios_por_estrato(df)
@@ -84,3 +76,32 @@ def test_becarios_por_genero_suman_total():
     assert por_genero["becarios"].sum() == total_becarios(df), (
         "La suma de becarios por género debe igualar el total"
     )
+
+def _contar_con_csv():
+    """Cuenta las filas del CSV sin pandas: otro camino para la cifra de control."""
+    with open(DATOS, encoding="utf-8", newline="") as f:
+        filas = list(csv.DictReader(f))
+    por_ano = Counter(int(fila["ano_seleccion"]) for fila in filas)
+    return len(filas), por_ano
+
+
+def test_cifra_de_control_total():
+    """El total de la app coincide con el conteo directo del CSV."""
+    total_csv, _ = _contar_con_csv()
+    assert total_csv == 8725, "El CSV de datos.gov.co debe tener 8.725 filas"
+    assert total_becarios(cargar_becas()) == total_csv
+
+
+def test_cifra_de_control_por_ano():
+    df = cargar_becas()
+    _, por_ano = _contar_con_csv()
+    for ano, esperado in por_ano.items():
+        assert total_becarios(df, ano) == esperado, f"Año {ano} no coincide"
+
+
+def test_filtrar_por_nivel():
+    df = cargar_becas()
+    assert len(filtrar_por_nivel(df, "Todos los niveles")) == len(df)
+    maestria = filtrar_por_nivel(df, "Maestría")
+    assert 0 < len(maestria) < len(df)
+    assert set(maestria["nivel_academico"]) == {"Maestría"}

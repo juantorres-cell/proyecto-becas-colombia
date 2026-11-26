@@ -11,6 +11,8 @@ from logica import (
     becarios_por_pais,
     cargar_becas,
     total_becarios,
+    filtrar_por_nivel,
+    niveles_academicos,
 )
 
 # Configuración: viene del entorno, no del código.
@@ -19,6 +21,7 @@ CLAVE_ADMIN = os.environ.get("CLAVE_ADMIN", "")  # secreto: nunca escriba su val
 
 # Lo que la app le dice a quien la abre.
 NECESIDAD = (
+    "Para estudiantes, universidades y quienes diseñan políticas de becas:"
     "De las becas en el exterior que ICETEX otorga a colombianos, "
     "¿qué estratos, niveles académicos y países concentran el aprovechamiento, "
     "y qué grupos quedan por fuera?"
@@ -26,13 +29,17 @@ NECESIDAD = (
 FUENTE = (
     "Datos abiertos: [Becas en el exterior para colombianos]"
     "(https://www.datos.gov.co/d/g85v-p2ik), ICETEX, convocatorias 2018–2025. "
-    "Licencia CC BY-SA 4.0."
+    "Licencia CC BY-SA 4.0. "
+    "Cada fila del conjunto de datos se cuenta como un becario; "
+    "no se eliminan filas repetidas porque el archivo no trae identificador."
 )
 
-becas = cargar_becas()
-lista_anos = anos(becas)
+becas_todas = cargar_becas()
+lista_anos = anos(becas_todas)
 opciones_ano = ["Todos los años"] + [str(a) for a in lista_anos]
+opciones_nivel = ["Todos los niveles"] + niveles_academicos(becas_todas)
 ano = solara.reactive("Todos los años")
+nivel = solara.reactive("Todos los niveles")
 clave = solara.reactive("")
 
 
@@ -86,13 +93,16 @@ def _barras_html(df_distrib, color="#1976D2", resaltar=None, top=15):
 def Page():
     solara.Title(NOMBRE)
     ano_int = _ano_a_int(ano.value)
+    becas = filtrar_por_nivel(becas_todas, nivel.value)
     total = total_becarios(becas, ano_int)
 
     # --- Encabezado ---
     solara.Markdown(f"# {NOMBRE}\n\n{NECESIDAD}")
 
     # --- Selector de año ---
-    solara.Select(label="Año de selección", value=ano, values=opciones_ano)
+    with solara.Row():
+        solara.Select(label="Año de selección", value=ano, values=opciones_ano)
+        solara.Select(label="Nivel académico", value=nivel, values=opciones_nivel)
 
     # --- KPIs (tarjetas) ---
     df_gen = becarios_por_genero(becas, ano_int)

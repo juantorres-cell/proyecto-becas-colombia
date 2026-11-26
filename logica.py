@@ -9,14 +9,15 @@ DATOS = Path(__file__).parent / "datos" / "becas_exterior_icetex.csv"
 def limpiar_becas(df):
     """Normaliza el dataset de ICETEX.
 
-    - Quita duplicados completos.
+    - No quita filas: el archivo no trae identificador, así que cada fila
+      es un becario (filas idénticas pueden ser personas distintas).
     - Unifica mayúsculas/minúsculas y tildes en todas las columnas de texto.
     - Unifica sinónimos (género, nivel académico, modalidad, rango de edad).
     - Unifica los 'no aplica' (NaN, 'N/A', 'NA') en 'Sin información'.
     - Convierte estrato a categoría string y año a entero.
     - Estandariza los nombres de columnas a minúsculas sin espacios.
     """
-    d = df.drop_duplicates().copy()
+    d = df.copy()
 
     # Renombrar columnas a minúsculas con guiones bajos.
     d.columns = [c.strip().lower().replace(" ", "_") for c in d.columns]
@@ -36,7 +37,6 @@ def limpiar_becas(df):
     d["genero"] = d["genero"].map(_norm_genero)
 
     # ---- Estrato socioeconómico ----
-        # ---- Estrato socioeconómico ----
     def _norm_estrato(x):
         if pd.isna(x):
             return "Sin información"
@@ -129,7 +129,7 @@ def limpiar_becas(df):
             return "Especialización y Maestría"
         if s in {"posgrado", "postgrado"}:
             return "Posgrado"
-        if s in {"curso corto", "curso corto", "cursos cortos"}:
+        if s in {"curso corto", "cursos cortos"}:
             return "Curso corto"
         if s in {"investigación", "investigacion"}:
             return "Investigación"
@@ -143,7 +143,7 @@ def limpiar_becas(df):
         if pd.isna(x):
             return "Sin información"
         s = str(x).strip().lower()
-        if s == "presencial" or s in {"presencial - virtual", "presencial o virtual", "presencial - virtual"}:
+        if s == "presencial" or s in {"presencial - virtual", "presencial o virtual"}:
             return "Presencial"
         if s in {"virtual", "online"}:
             return "Virtual"
@@ -165,11 +165,6 @@ def limpiar_becas(df):
 
     # ---- Año: a entero ----
     d["ano_seleccion"] = pd.to_numeric(d["ano_seleccion"], errors="coerce").astype("Int64")
-
-    # Segundo drop_duplicates: al normalizar, filas que antes eran distintas
-    # (p. ej. 'Maestria' vs 'Maestría') pueden volverse idénticas. Hay que
-    # quitarlas también, además del drop_duplicates que se hizo al inicio.
-    d = d.drop_duplicates()
 
     return d.reset_index(drop=True)
 
@@ -240,3 +235,10 @@ def total_becarios(df, ano=None):
     """Total de becarios, opcionalmente filtrado por año."""
     d = df if ano is None else df[df["ano_seleccion"] == ano]
     return int(len(d))
+
+
+def filtrar_por_nivel(df, nivel=None):
+    """Filtra por nivel académico. None o 'Todos los niveles' deja todo."""
+    if nivel is None or nivel == "Todos los niveles":
+        return df
+    return df[df["nivel_academico"] == nivel]
